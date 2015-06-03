@@ -111,7 +111,7 @@ def check_fd(parser, pid, fd):
 
 def parse_command():
 	parser = optparse.OptionParser(
-		usage="usage: %prog [options] [PID] [FD]\n"
+		usage="usage: %prog [options] [PID] [FD] [FD]...\n"
 		"Allows to close a file descriptor from a PID or swap it for another\n"
 		"file. Default option is to close the file descriptor. Uses GDB."
 	)
@@ -139,8 +139,8 @@ def parse_command():
 
 	options, args = parser.parse_args()
 
-	if len(args) != 2:
-		parser.error("Need exactly 2 arguments.")
+	if len(args) < 2:
+		parser.error("Need at least 2 arguments.")
 
 	pid = args[0]
 	fd = args[1]
@@ -168,23 +168,22 @@ def parse_command():
 def main():
 	options, args = parse_command()
 
-	fd_to_replace = args[1]
-
 	with Gdb(args[0], options.gdb_verbose) as gdb:
-		if options.replace:
-			fd = gdb.open_file(options.replace)
-			gdb.dup2(fd, fd_to_replace)
-			gdb.close_fd(fd)
-		elif options.swap:
-			fd = gdb.open_file("/dev/null")
-			gdb.dup2(options.swap, fd)
-			gdb.dup2(fd_to_replace, options.swap)
-			gdb.dup2(fd, options.swap)
-			gdb.close_fd(fd)
-		elif options.copy:
-			gdb.dup2(options.copy, fd_to_replace)
-		else:
-			gdb.close_fd(fd_to_replace)
+		for fd_to_replace in args[1:]:
+			if options.replace:
+				fd = gdb.open_file(options.replace)
+				gdb.dup2(fd, fd_to_replace)
+				gdb.close_fd(fd)
+			elif options.swap:
+				fd = gdb.open_file("/dev/null")
+				gdb.dup2(options.swap, fd)
+				gdb.dup2(fd_to_replace, options.swap)
+				gdb.dup2(fd, options.swap)
+				gdb.close_fd(fd)
+			elif options.copy:
+				gdb.dup2(options.copy, fd_to_replace)
+			else:
+				gdb.close_fd(fd_to_replace)
 
 if __name__ == "__main__":
 	main()
