@@ -81,9 +81,7 @@ class Gdb(object):
 				if " = " in data:
 					return data.split("=", 1)[-1].strip()
 			except IOError:
-				ready = select.select([self.gdb.stdout], [], [], 5)
-				if len(ready[0]) == 0:
-					raise RuntimeError("GDB took too long to respond.")
+				select.select([self.gdb.stdout], [], [], 0.1)
 
 	def close_fd(self, fd):
 		self.send_command("call close(%d)" % int(fd))
@@ -92,11 +90,7 @@ class Gdb(object):
 		self.send_command("call dup2(%d, %d)" % (int(old_fd), int(new_fd)))
 
 	def open_file(self, path):
-		fd_expected = self.send_command_expect('call open("%s", 66)' % path)
-		fd = get_file_opened(self.pid, path)
-
-		if fd != fd_expected:
-			raise ValueError("Asked for FD #%d but received #%d." % (int(fd_expected), int(fd)))
+		fd = self.send_command_expect('call open("%s", 66)' % path)
 
 		return fd
 
