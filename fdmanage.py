@@ -92,14 +92,11 @@ class Gdb(object):
 		self.send_command("call dup2(%d, %d)" % (int(old_fd), int(new_fd)))
 
 	def open_file(self, path):
+		fd_expected = self.send_command_expect('call open("%s", 66)' % path)
 		fd = get_file_opened(self.pid, path)
 
-		if not fd:
-			fd_expected = self.send_command_expect('call open("%s", 66)' % path)
-			fd = get_file_opened(self.pid, path)
-
-			if fd != fd_expected:
-				raise ValueError("Asked for FD #%d but received #%d." % (int(fd_expected), int(fd)))
+		if fd != fd_expected:
+			raise ValueError("Asked for FD #%d but received #%d." % (int(fd_expected), int(fd)))
 
 		return fd
 
