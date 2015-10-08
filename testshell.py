@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# fdmanage.py is a program to manage file descriptors of running programs
-# by using GDB to modify the running program.
+# testshell.py allows to create a shell in a running program to modify
+# its internals.
+#
+# Usage:
+# testshell.start_shell(bind_ip, port, globals())
 #
 # Copyright (C) 2015 Jérôme Poulin <jeromepoulin@gmail.com>
 #
@@ -96,4 +99,3 @@ if __name__ == "__main__":
 	ip, port = server.server_address
 	server_thread = server.server_thread
 	print("Server loop running in thread:", server_thread.name)
-
