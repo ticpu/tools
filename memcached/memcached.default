@@ -1,0 +1,3 @@
+# Set this to no to disable memcached.
+ENABLE_MEMCACHED=yes
+REMOTE_CACHE="casrvwebproxy1:11211"
