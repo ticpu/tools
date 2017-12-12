@@ -34,12 +34,12 @@ static pthread_mutex_t volume_set_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void set_volume_cb(pa_context *c, int success, void *userdata)
 {
-	uint32_t new_volume = pa_cvolume_max((pa_cvolume*)userdata);
+	pa_volume_t *new_volume = userdata;
 
-	if (success)
+	if (success && new_volume)
 	{
-		syslog(LOG_INFO, "Volume set at %u.", new_volume);
-		sd_notifyf(0, "STATUS=Volume at %u.", new_volume);
+		syslog(LOG_INFO, "Volume set at %u.", *new_volume);
+		sd_notifyf(0, "STATUS=Volume at %u.", *new_volume);
 	}
 	else
 	{
@@ -53,7 +53,7 @@ void set_volume_cb(pa_context *c, int success, void *userdata)
 void set_volume(pa_context *c, uint32_t sink_index, pa_cvolume *volume, uint32_t increment, uint8_t direction)
 {
 	pa_operation *op;
-	pa_volume_t current_volume = pa_cvolume_max(volume);
+	static pa_volume_t current_volume;
 	int8_t multiplicator;
 
 	switch (direction) {
@@ -68,11 +68,12 @@ void set_volume(pa_context *c, uint32_t sink_index, pa_cvolume *volume, uint32_t
 		abort();
 	}
 
+	current_volume = pa_cvolume_max(volume);
 	syslog(LOG_DEBUG, "Current volume at %u.", current_volume);
 	current_volume = current_volume + (increment * multiplicator);
 	pa_cvolume_set(volume, volume->channels, current_volume);
 	op = pa_context_set_sink_volume_by_index(
-		c, sink_index, volume, set_volume_cb, volume);
+		c, sink_index, volume, set_volume_cb, &current_volume);
 	pa_operation_unref(op);
 }
 
