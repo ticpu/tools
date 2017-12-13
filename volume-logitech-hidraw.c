@@ -12,6 +12,7 @@
  *   gcc -O3 -o volume-logitech volume-logitech.c -lpulse -lsystemd
  *
  */
+#include <dirent.h>
 #include <pulse/pulseaudio.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -23,12 +24,16 @@
 do { } while (0)
 #endif
 #include <systemd/sd-daemon.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define PROG "logitech-volume-daemon"
+#define SYSFS_HIDRAW "/sys/class/hidraw/"
 #define VOLUME_INCREMENT 200
 #define VOLUME_UP 0x01
 #define VOLUME_DOWN 0x02
 #define SINK_NAME_HEADSET "Logitech_G933"
+#define DEVICE_USB_ID "046D:0A5B"
 
 static pthread_mutex_t volume_set_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -137,14 +142,12 @@ int start_daemon(const char *hidraw_path)
 	pa_context_connect(c, NULL, 0, NULL);
 	pa_threaded_mainloop_start(m);
 
-	sd_notify(0, "READY=1");
-	
 	while (1)
 	{
 
 		/* Get the action */
 		do packet_size = fread(packet, 5, 1, hidraw);
-		while (!feof(hidraw) && packet[1] == 0x00);
+		while (packet_size != 0 && packet[1] == 0x00);
 
 		/* Stream had ended */
 		if (feof(hidraw) || packet_size == 0)
@@ -190,27 +193,83 @@ int start_daemon(const char *hidraw_path)
 	return 0;
 }
 
+const char *find_hidraw_device()
+{
+	DIR *hidraw_sysfs_dir;
+	struct dirent *hidraw_sysfs_device;
+	char hidraw_sysfs_device_path[64];
+	static char hidraw_device[64];
+	char *ret;
+
+	hidraw_sysfs_dir = opendir(SYSFS_HIDRAW);
+
+	if (hidraw_sysfs_dir)
+	{
+		while ((hidraw_sysfs_device = readdir(hidraw_sysfs_dir)))
+		{
+			snprintf(
+				hidraw_sysfs_device_path, sizeof(hidraw_sysfs_device_path),
+				"%s%s/device", SYSFS_HIDRAW, hidraw_sysfs_device->d_name);
+			syslog(LOG_DEBUG, "Trying to open %s.", hidraw_sysfs_device_path);
+			bzero(hidraw_device, sizeof(hidraw_device));
+
+			if (!readlink(hidraw_sysfs_device_path, hidraw_device, sizeof(hidraw_device)))
+			{
+				syslog(LOG_ERR, "Failed to read link at %s.", hidraw_sysfs_device_path);
+				return NULL;
+			}
+
+			syslog(LOG_DEBUG, "Link points to %s.", hidraw_device);
+			if (strstr(hidraw_device, DEVICE_USB_ID) == NULL)
+				continue;
+			else
+				break;
+		}
+
+		if (hidraw_sysfs_device)
+		{
+			snprintf(hidraw_device, sizeof(hidraw_device), "/dev/%s", hidraw_sysfs_device->d_name);
+			ret = hidraw_device;
+		}
+		else
+			ret = NULL;
+
+		closedir(hidraw_sysfs_dir);
+	}
+	else
+	{
+		syslog(LOG_CRIT, "Couldn't open %s.", SYSFS_HIDRAW);
+		exit(EXIT_FAILURE);
+	}
+
+	syslog(LOG_INFO, "Returning device %s.", ret);
+	return ret;
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef SYSLOG
 	openlog(PROG, LOG_PERROR, LOG_USER);
 #endif
 
-	int ret;
-
-	if (argc != 2) {
-		fprintf(stderr, "Usage: %s /dev/hidrawN\n", argv[0]);
-		return 2;
-	} else if (strstr(argv[1], "/dev/")) {
-		ret = start_daemon(argv[1]);
-	} else {
-		fprintf(stderr, "This doesn't look like a valid device.\n");
-		return 1;
+	while (1)
+	{
+		const char *hidraw_device = find_hidraw_device();
+		sd_notify(0, "READY=1");
+		if (hidraw_device)
+		{
+			syslog(LOG_INFO, "Starting daemon on device %s.", hidraw_device);
+			sd_notifyf(0, "STATUS=Connected to %s.", hidraw_device);
+			start_daemon(hidraw_device);
+		}
+		syslog(LOG_DEBUG, "%s", "Couldn't find device, sleeping.");
+		sd_notify(0, "STATUS=Couldn't find device.");
+		sleep(1);
 	}
 
 #ifdef SYSLOG
 	closelog();
 #endif
 
-	return ret;
+	return 1;
 }
