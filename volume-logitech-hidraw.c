@@ -6,10 +6,11 @@
  * Make sure to apt install libpulse-dev to compile.
  *
  * Debug with:
- *   gcc -Wall -g -o volume-logitech volume-logitech.c -lpulse -lsystemd -DSYSLOG
+ *   gcc -Wall -g -o volume-logitech-hidraw volume-logitech-hidraw.c \
+ *		-lpulse -lsystemd -DSYSLOG
  *
  * Compile with:
- *   gcc -O3 -o volume-logitech volume-logitech.c -lpulse -lsystemd
+ *   gcc -O3 -o volume-logitech-hidraw volume-logitech-hidraw.c -lpulse -lsystemd
  *
  */
 #include <dirent.h>
