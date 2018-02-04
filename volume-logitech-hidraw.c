@@ -85,6 +85,7 @@ void set_volume(pa_context *c, uint32_t sink_index, pa_cvolume *volume, uint32_t
 void sink_list_cb(pa_context *c, const pa_sink_info *i, int eol, void *userdata)
 {
 	pa_cvolume sink_headset_volume;
+	uint8_t direction = (uintptr_t)userdata;
 
 	if (eol)
 		return;
@@ -93,7 +94,7 @@ void sink_list_cb(pa_context *c, const pa_sink_info *i, int eol, void *userdata)
 	{
 		syslog(LOG_DEBUG, "found headset: #%u %s", i->index, i->name);
 		sink_headset_volume = i->volume;
-		set_volume(c, i->index, &sink_headset_volume, VOLUME_INCREMENT, *(uint8_t*)userdata);
+		set_volume(c, i->index, &sink_headset_volume, VOLUME_INCREMENT, direction);
 	}
 	else
 		syslog(LOG_DEBUG, "sink #%u: %s", i->index, i->name);
@@ -127,7 +128,7 @@ int start_daemon(const char *hidraw_path)
 	FILE *hidraw;
 	char packet[8];
 	size_t packet_size;
-	uint8_t direction;
+	uintptr_t direction;
 
 	hidraw = fopen(hidraw_path, "rb");
 	if (!hidraw) {
@@ -159,7 +160,7 @@ int start_daemon(const char *hidraw_path)
 		/* Ask PulseAudio to find card and adjust volume. */
 		pthread_mutex_lock(&volume_set_mutex);
 		pa_threaded_mainloop_lock(m);
-		op = pa_context_get_sink_info_list(c, sink_list_cb, &direction);
+		op = pa_context_get_sink_info_list(c, sink_list_cb, (void *)direction);
 		pa_threaded_mainloop_unlock(m);
 
 		/* See how it went */
