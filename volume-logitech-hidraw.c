@@ -158,6 +158,19 @@ int start_daemon(const char *hidraw_path)
 		/* Getting direction */
 		direction = packet[1];
 
+		/* Handle other kind of events like Power on */
+		switch (direction) {
+		case 255:
+			syslog(LOG_INFO, "Headset power on.");
+			continue;
+		case VOLUME_UP:
+		case VOLUME_DOWN:
+			break;
+		default:
+			syslog(LOG_ERR, "Invalid direction recived: %u.", (uint8_t)direction);
+			continue;
+		}
+
 		/* Ask PulseAudio to find card and adjust volume. */
 		pthread_mutex_lock(&volume_set_mutex);
 		pa_threaded_mainloop_lock(m);
@@ -244,7 +257,7 @@ const char *find_hidraw_device()
 		exit(EXIT_FAILURE);
 	}
 
-	syslog(LOG_INFO, "Returning device %s.", ret);
+	syslog(LOG_DEBUG, "Returning device %s.", ret);
 	return ret;
 }
 
