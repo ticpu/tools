@@ -1,0 +1,66 @@
+#!/bin/bash
+set -e
+
+# Parameters
+RBD_SYMLINKS="/dev/rbd-nbd"
+NBD_EXTRA="--id libvirt --exclusive"
+
+# Script
+OBJECT="$1"
+OPERATION="$2"
+SUBOPERATION="$3"
+EXTRA="$4"
+XML="`mktemp /tmp/virshxml.XXXXX`"
+cat > "$XML"
+
+cleanup () {
+	rm -f $XML
+}
+
+trap cleanup EXIT ERR
+
+find_rbd_nbd () {
+	rbd-nbd list-mapped | sed -r -n -e "s|.*\s${1}\s${2}\s.*(/dev/nbd[0-9]+).*$|\1|p"
+}
+
+rbd_nbd () {
+	local dev
+	local nbd
+	local full_name
+	local pool_name
+	local image_name
+
+	[ -d "$RBD_SYMLINKS" ] || mkdir "$RBD_SYMLINKS"
+	for dev in $(xmlstarlet sel -t -v "/domain/devices/filesystem/source/@dev" "$XML")
+	do
+		[ ! -z ${dev##$RBD_SYMLINKS/*} ] && continue
+		full_name=${dev#$RBD_SYMLINKS/}
+		pool_name=${full_name%/*}
+		image_name=${full_name#*/}
+
+		nbd=$(find_rbd_nbd "$pool_name" "$image_name")
+
+		case "$1" in
+			map)
+				[ -b "$nbd" -o -L "$nbd" ] || nbd=$(rbd-nbd $NBD_EXTRA map "$full_name")
+				[ -d "${RBD_SYMLINKS}/${pool_name}" ] || mkdir -p "${RBD_SYMLINKS}/${pool_name}"
+				ln -sf "$nbd" "${RBD_SYMLINKS}/${full_name}"
+			;;
+
+			unmap)
+				[ -b "$nbd" -o -L "$nbd" ] && rbd-nbd unmap "$nbd"
+				[ -L "$dev" ] && rm "$dev"
+			;;
+		esac
+	done
+}
+
+case $OPERATION in
+	prepare)
+		rbd_nbd map
+	;;
+
+	release)
+		rbd_nbd unmap
+	;;
+esac
