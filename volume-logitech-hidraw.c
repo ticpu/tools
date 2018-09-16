@@ -13,6 +13,7 @@
  *   gcc -O3 -o volume-logitech-hidraw volume-logitech-hidraw.c -lpulse -lsystemd
  *
  */
+#define _GNU_SOURCE
 #include <dirent.h>
 #include <pulse/pulseaudio.h>
 #include <pthread.h>
@@ -167,7 +168,9 @@ int start_daemon(const char *hidraw_path)
 		case VOLUME_DOWN:
 			break;
 		default:
-			syslog(LOG_ERR, "Invalid direction recived: %u.", (uint8_t)direction);
+			syslog(LOG_ERR, "Invalid direction received: %u.", (uint8_t)direction);
+			fclose(hidraw);
+			hidraw = fopen(hidraw_path, "rb");
 			continue;
 		}
 
@@ -208,13 +211,14 @@ int start_daemon(const char *hidraw_path)
 	return 0;
 }
 
-const char *find_hidraw_device()
+char *find_hidraw_device()
 {
 	DIR *hidraw_sysfs_dir;
 	struct dirent *hidraw_sysfs_device;
-	char hidraw_sysfs_device_path[64];
-	static char hidraw_device[64];
+	char *hidraw_sysfs_device_path;
+	char *hidraw_device;
 	char *ret;
+	int err;
 
 	hidraw_sysfs_dir = opendir(SYSFS_HIDRAW);
 
@@ -222,20 +226,40 @@ const char *find_hidraw_device()
 	{
 		while ((hidraw_sysfs_device = readdir(hidraw_sysfs_dir)))
 		{
-			snprintf(
-				hidraw_sysfs_device_path, sizeof(hidraw_sysfs_device_path),
+			err = asprintf(
+				&hidraw_sysfs_device_path,
 				"%s%s/device", SYSFS_HIDRAW, hidraw_sysfs_device->d_name);
-			syslog(LOG_DEBUG, "Trying to open %s.", hidraw_sysfs_device_path);
-			bzero(hidraw_device, sizeof(hidraw_device));
 
-			if (!readlink(hidraw_sysfs_device_path, hidraw_device, sizeof(hidraw_device)))
+			if (err <= 0) {
+				syslog(LOG_CRIT, "Couldn't allocate memory for device name.");
+				abort();
+			}
+
+			syslog(LOG_DEBUG, "Trying to open %s.", hidraw_sysfs_device_path);
+			hidraw_device = malloc(PATH_MAX);
+
+			if (hidraw_device == NULL) {
+				syslog(LOG_CRIT, "Couldn't allocate memory for link name.");
+				abort();
+			}
+	
+			bzero(hidraw_device, PATH_MAX);
+
+			if (!readlink(hidraw_sysfs_device_path, hidraw_device, PATH_MAX))
 			{
+				free(hidraw_device);
 				syslog(LOG_ERR, "Failed to read link at %s.", hidraw_sysfs_device_path);
 				return NULL;
 			}
 
+			free(hidraw_sysfs_device_path);
+			hidraw_sysfs_device_path = NULL;
+
 			syslog(LOG_DEBUG, "Link points to %s.", hidraw_device);
-			if (strstr(hidraw_device, DEVICE_USB_ID) == NULL)
+			ret = strstr(hidraw_device, DEVICE_USB_ID);
+			free(hidraw_device);
+			
+			if (ret == NULL)
 				continue;
 			else
 				break;
@@ -243,7 +267,13 @@ const char *find_hidraw_device()
 
 		if (hidraw_sysfs_device)
 		{
-			snprintf(hidraw_device, sizeof(hidraw_device), "/dev/%s", hidraw_sysfs_device->d_name);
+			err = asprintf(&hidraw_device, "/dev/%s", hidraw_sysfs_device->d_name);
+
+			if (err <= 0) {
+				syslog(LOG_CRIT, "Couldn't allocate memory for device path.");
+				abort();
+			}
+
 			ret = hidraw_device;
 		}
 		else
@@ -263,13 +293,17 @@ const char *find_hidraw_device()
 
 int main(int argc, char *argv[])
 {
+	char *hidraw_device = NULL;
 #ifdef SYSLOG
 	openlog(PROG, LOG_PERROR, LOG_USER);
 #endif
 
 	while (1)
 	{
-		const char *hidraw_device = find_hidraw_device();
+		if (hidraw_device)
+			free(hidraw_device);
+
+		hidraw_device = find_hidraw_device();
 		sd_notify(0, "READY=1");
 		if (hidraw_device)
 		{
