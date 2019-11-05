@@ -8,6 +8,9 @@
 # move_zimbra_mailbox_volume.sh <account@domain.com> \
 #   <source_path> <destination_path> <rsync_options>
 #
+# Run as user zimbra, paths must exists in MySQL zimbra.volume table,
+# access to MySQL socket must work without password as user zimbra.
+#
 # Copyright (C) 2019 Jérôme Poulin <jeromepoulin@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -89,3 +92,4 @@ get_file_list $GROUP_ID $MBOX_ID $SOURCE_ID > $FILE_LIST
 rsync $RSYNC_OPTIONS -rpt --files-from="$FILE_LIST" "${SOURCE}/" "${DESTINATION}/"
 update_location $GROUP_ID $MBOX_ID $SOURCE_ID $DESTINATION_ID
 sed -e "s|^|${SOURCE}/|" $FILE_LIST | xargs -r rm
+rm -f "$FILE_LIST"
