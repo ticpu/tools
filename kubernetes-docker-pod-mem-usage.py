@@ -18,6 +18,7 @@
 #
 # you should have received a copy of the gnu general public license
 # along with this program.  if not, see <http://www.gnu.org/licenses/>.
+import argparse
 import logging
 import os
 import re
@@ -30,11 +31,11 @@ from subprocess import DEVNULL, PIPE
 def get_containers_data():
 	docker_process = subprocess.Popen(
 		["docker", "container", "ls", "--format", "{{.ID}} {{.Image}} {{.Names}}"],
-		shell=False, stdin=DEVNULL, stdout=PIPE,
+		shell=False, stdin=DEVNULL, stdout=PIPE, encoding='utf8',
 	)
 	(docker_stdout, docker_stderr) = docker_process.communicate(timeout=5)
 	containers = {}
-	for line in docker_stdout.decode('utf8').splitlines():
+	for line in docker_stdout.splitlines():
 		container, image, pod = line.split(' ', 3)
 		pod_data = pod.split("_")
 		containers[container] = {
@@ -44,6 +45,17 @@ def get_containers_data():
 			'image': image,
 		}
 	return containers
+
+
+def parse_args():
+	parser = argparse.ArgumentParser(
+		description="list pods with their current and maximum memory usage",
+	)
+	parser.add_argument(
+		"-H", "--human-readable", default=False, action="store_true",
+		help="show memory usage in powers of 1024 (e.g., 1023M)",
+	)
+	return parser.parse_args()
 
 
 def main():
@@ -56,6 +68,7 @@ def main():
 		logging.exception("Could not get Docker data.")
 		containers = {}
 
+	args = parse_args()
 	cgroup_list = os.walk("/sys/fs/cgroup/memory/kubepods")
 	for cgroup, _, _ in cgroup_list:
 		cgroup_re = re.match(".+/(pod\w{8}-\w{4}-\w{4}-\w{4}-\w{12})/(\w{64})$", cgroup)
@@ -76,6 +89,11 @@ def main():
 				container_name = "{c[namespace]}/{c[pod_name]}/{c[image]}".format(c=containers[container_id])
 			else:
 				container_name = "%s/%s/NA" % (pod_id, container_id)
+
+			if args.human_readable:
+				numfmt = subprocess.Popen(["numfmt", "--to=iec"], shell=False, stdin=PIPE, stdout=PIPE, encoding='utf8')
+				(numfmt_stdout, _) = numfmt.communicate(input="%s\n%s\n%s\n" % (memory_used, memory_limit, memory_max))
+				memory_used, memory_limit, memory_max = numfmt_stdout.splitlines()
 
 			print("%s %s/%s %s %s/%s %s" % (container_name, memory_used, memory_limit, memory_limit_percent, memory_max, memory_limit, memory_max_percent))
 
