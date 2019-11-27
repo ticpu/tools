@@ -28,6 +28,16 @@ import sys
 from subprocess import DEVNULL, PIPE
 
 
+def get_memory_stats(cgroup):
+	memory_stats = {}
+
+	for line in open(os.path.join(cgroup, "memory.stat")).readlines():
+		k, v = line.split(' ')
+		memory_stats[k] = int(v)
+
+	return memory_stats
+
+
 def get_containers_data():
 	docker_process = subprocess.Popen(
 		["docker", "container", "ls", "--format", "{{.ID}} {{.Image}} {{.Names}}"],
@@ -55,6 +65,10 @@ def parse_args():
 		"-H", "--human-readable", default=False, action="store_true",
 		help="show memory usage in powers of 1024 (e.g., 1023M)",
 	)
+	parser.add_argument(
+		"-i", "--ignore-inactive-cache", default=False, action="store_true",
+		help="substract inactive file cache from used memory (total_inactive_file)",
+	)
 	return parser.parse_args()
 
 
@@ -75,9 +89,12 @@ def main():
 		if cgroup_re:
 			pod_id, container_id = cgroup_re.groups()
 			container_id = container_id[:12]
+			memory_stats = get_memory_stats(cgroup)
 			memory_used = int(open(os.path.join(cgroup, "memory.usage_in_bytes")).read().strip())
-			memory_limit = int(open(os.path.join(cgroup, "memory.limit_in_bytes")).read().strip())
+			if args.ignore_inactive_cache:
+				memory_used -= memory_stats['total_inactive_file']
 			memory_max = int(open(os.path.join(cgroup, "memory.max_usage_in_bytes")).read().strip())
+			memory_limit = int(open(os.path.join(cgroup, "memory.limit_in_bytes")).read().strip())
 			if memory_limit == 9223372036854771712:
 				memory_limit_percent = "NA"
 				memory_max_percent = "NA"
