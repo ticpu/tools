@@ -1,0 +1,17 @@
+[Unit]
+RequiresMountsFor=/mnt/data
+Description=Execute setfacl automatically on moved files or folders.
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c "echo 500000 > /proc/sys/fs/inotify/max_user_watches"
+ExecStart=/usr/local/sbin/fix-moved-file-acl.py /mnt/data
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/mnt/data
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
