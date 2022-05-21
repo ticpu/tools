@@ -1,0 +1,4 @@
+github.com/xenolf/lego v2.7.2+incompatible h1:aGxxYqhnQLQ71HsvEAjJVw6ao14APwPpRk0mpFroPXk=
+github.com/xenolf/lego v2.7.2+incompatible/go.mod h1:fwiGnfsIjG7OHPfOvgK7Y/Qo6+2Ox0iozjNTkZICKbY=
+golang.org/x/sync v0.0.0-20220513210516-0976fa681c29 h1:w8s32wxx3sY+OjLlv9qltkLU5yvJzxjjgiHWLjdIcw4=
+golang.org/x/sync v0.0.0-20220513210516-0976fa681c29/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
