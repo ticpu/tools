@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# vim:fenc=utf-8:noet
 #
 # auto_btrfs_snapshots.py manages BTRFS snapshots, automatically purging
 # them after a programmable number of days.
@@ -178,6 +178,11 @@ class Volume(object):
 				self.path,
 				os.path.abspath(snapshot),
 			], self.do_action)
+		else:
+			return process_call([
+				BTRFS, "subvolume", "create",
+				os.path.abspath(snapshot),
+			], self.do_action)
 
 	def snapshot_create(self, snapshot=None):
 		if snapshot is None:
@@ -274,7 +279,8 @@ def parse_options():
 	parser.add_option(
 		"--no-create", dest="do_create",
 		action="store_false", default=True,
-		help="Do not execute btrfs subvolume create.",
+		help="Use btrfs subvolume create instead of snapshot create to fake "
+			 "snapshot creation, useful to slowly delete old snapshots.",
 	)
 	parser.add_option(
 		"-k", "--snapshot-kept", dest="snapshot_kept",
