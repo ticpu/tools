@@ -123,6 +123,7 @@ class Volume(object):
 		self.options = options
 		self.show_snapshot_kept = options.snapshot_kept
 		self.do_action = options.do_action
+		self.do_create = options.do_create
 		self.latest_snapshot = options.latest_snapshot
 		self.path = os.path.abspath(path)
 		self.snapshot_name_format = options.snapshot_prefix + options.time_format
@@ -171,11 +172,12 @@ class Volume(object):
 			self.snapshot_delete(snapshot.path)
 
 	def _btrfs_snapshot_create(self, snapshot):
-		return process_call([
-			BTRFS, "subvolume", "snapshot", "-r",
-			self.path,
-			os.path.abspath(snapshot),
-		], self.do_action)
+		if self.do_create:
+			return process_call([
+				BTRFS, "subvolume", "snapshot", "-r",
+				self.path,
+				os.path.abspath(snapshot),
+			], self.do_action)
 
 	def snapshot_create(self, snapshot=None):
 		if snapshot is None:
@@ -266,6 +268,11 @@ def parse_options():
 	)
 	parser.add_option(
 		"-n", "--no-action", dest="do_action",
+		action="store_false", default=True,
+		help="Echo all active BTRFS commands issued without execution.",
+	)
+	parser.add_option(
+		"--no-create", dest="do_create",
 		action="store_false", default=True,
 		help="Echo all active BTRFS commands issued without execution.",
 	)
