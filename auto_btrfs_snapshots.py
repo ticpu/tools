@@ -269,12 +269,12 @@ def parse_options():
 	parser.add_option(
 		"-n", "--no-action", dest="do_action",
 		action="store_false", default=True,
-		help="Echo all active BTRFS commands issued without execution.",
+		help="Echo all BTRFS commands that would be executed.",
 	)
 	parser.add_option(
 		"--no-create", dest="do_create",
 		action="store_false", default=True,
-		help="Echo all active BTRFS commands issued without execution.",
+		help="Do not execute btrfs subvolume create.",
 	)
 	parser.add_option(
 		"-k", "--snapshot-kept", dest="snapshot_kept",
