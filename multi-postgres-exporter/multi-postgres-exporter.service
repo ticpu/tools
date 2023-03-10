@@ -1,0 +1,18 @@
+[Unit]
+Description=Expose Postgresql statistics for multiple clusters
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+EnvironmentFile=/etc/default/multi-postgres-exporter
+ExecStart=/usr/bin/multi-postgres-exporter.py $EXTRA_ARGS
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

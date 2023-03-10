@@ -1,0 +1,5 @@
+multi-postgres-exporter (0.1.0-2) UNRELEASED; urgency=medium
+
+  * Initial release. (Closes: ST-21125)
+
+ -- Jérôme Poulin <jeromepoulin@gmail.com>  Thu, 09 Mar 2023 16:19:25 -0500

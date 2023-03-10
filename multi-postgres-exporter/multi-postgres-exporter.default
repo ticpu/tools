@@ -1,0 +1,1 @@
+EXTRA_ARGS="--exporter-path=/usr/bin/postgres-exporter-instance"
