@@ -1,0 +1,4 @@
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/auto_bcachefs_snapshots.py --keep-monthly=3 --keep-weekly=4 --keep-daily=1 --keep-last=10 -s /mnt/bcachefs/snapshots/opt -p "@GMT-" -t "%%Y.%%m.%%d-%%H.%%M.%%S" /mnt/bcachefs/opt
+ExecStart=/usr/local/bin/auto_bcachefs_snapshots.py --keep-monthly=3 --keep-weekly=4 --keep-daily=1 --keep-last=10 -s /mnt/bcachefs/snapshots/windowsvm-share -p "@GMT-" -t "%%Y.%%m.%%d-%%H.%%M.%%S" /mnt/bcachefs/windowsvm-share
