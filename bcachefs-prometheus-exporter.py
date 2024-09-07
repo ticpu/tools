@@ -21,6 +21,8 @@ class BcacheFSCollector:
 
         self.metrics['io_read_bytes'] = Gauge('bcachefs_io_read_bytes', 'Bytes read from device', ['device'])
         self.metrics['io_write_bytes'] = Gauge('bcachefs_io_write_bytes', 'Bytes written to device', ['device'])
+        self.metrics['io_read_iops'] = Gauge('bcachefs_io_read_iops', 'Read IOPS', ['device'])
+        self.metrics['io_write_iops'] = Gauge('bcachefs_io_write_iops', 'Write IOPS', ['device'])
 
         # Initialize btree metrics
         accounting_file = f"{self.base_path}/internal/accounting"
@@ -70,8 +72,12 @@ class BcacheFSCollector:
                     prev_counter = self.io_counters[dev_dir]
                     read_bytes = io_counter.read_bytes - prev_counter.read_bytes
                     write_bytes = io_counter.write_bytes - prev_counter.write_bytes
+                    read_count = io_counter.read_count - prev_counter.read_count
+                    write_count = io_counter.write_count - prev_counter.write_count
                     self.metrics['io_read_bytes'].labels(device=label).set(read_bytes)
                     self.metrics['io_write_bytes'].labels(device=label).set(write_bytes)
+                    self.metrics['io_read_iops'].labels(device=label).set(read_count)
+                    self.metrics['io_write_iops'].labels(device=label).set(write_count)
                 self.io_counters[dev_dir] = io_counter
 
         # Collect btree metrics
