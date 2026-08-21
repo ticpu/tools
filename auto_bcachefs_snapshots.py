@@ -71,41 +71,53 @@ def prune_split(archives, pattern, n, skip=None):
 	return keep
 
 
+class SnapshotError(Exception):
+	pass
+
+
 def process_call(subprocess_args, do_action):
-	if do_action:
-		process = subprocess.Popen(
-			subprocess_args,
-			stdin=None,
-			stdout=sys.stderr,
-			stderr=sys.stderr,
-			shell=False
-		)
-		process.wait()
-	else:
+	"""Run a command and return its exit status."""
+	if not do_action:
 		print(" ".join(subprocess_args))
+		return 0
+
+	process = subprocess.Popen(
+		subprocess_args,
+		stdin=None,
+		stdout=sys.stderr,
+		stderr=sys.stderr,
+		shell=False
+	)
+	return process.wait()
+
+
+def checked_call(subprocess_args, do_action):
+	returncode = process_call(subprocess_args, do_action)
+	if returncode != 0:
+		raise SnapshotError("%s exited %d" % (" ".join(subprocess_args), returncode))
 
 
 def free_space_check(path, minimum_free_space):
 	"""
 	@param path: Path to check free space.
-	@param minimum_free_space: Minimum free space in bytes, SI unit or percent.
+	@param minimum_free_space: Byte count, SI-suffixed size (100G) or percentage of the
+		filesystem (10%). Empty or None means no constraint.
 	@return: True if minimum_free_space is available, else False.
 	@rtype: bool
 	"""
+	if not minimum_free_space:
+		return True
+
 	statvfs = os.statvfs(path)
 	free_space = statvfs.f_frsize * statvfs.f_bavail
-	minimum_free_space_bytes = 0
 
-	if minimum_free_space:
-		try:
-			minimum_free_space_bytes = int(minimum_free_space)
-		except ValueError:
-			if minimum_free_space.endswith("%"):
-				pass
-			elif minimum_free_space[-1] in _si_prefix:
-				pass
+	if minimum_free_space.endswith("%"):
+		total = statvfs.f_frsize * statvfs.f_blocks
+		minimum_free_space_bytes = total * float(minimum_free_space[:-1]) / 100
+	elif minimum_free_space[-1] in _si_prefix:
+		minimum_free_space_bytes = float(minimum_free_space[:-1]) * _si_prefix[minimum_free_space[-1]]
 	else:
-		return True
+		minimum_free_space_bytes = float(minimum_free_space)
 
 	return free_space > minimum_free_space_bytes
 
@@ -130,16 +142,21 @@ class Volume(object):
 
 	def list_archives(self):
 		for snapshot in os.listdir(self.snapshot_dir):
-			if snapshot.startswith(self.options.snapshot_prefix):
+			if not snapshot.startswith(self.options.snapshot_prefix):
+				continue
+			try:
 				yield Archive(self.snapshot_dir, snapshot, self.snapshot_name_format)
+			except ValueError:
+				# Siblings share the prefix without carrying a timestamp, `<name>-latest` first
+				# among them, and are not archives.
+				continue
 
 	def prune_backups(self):
 		"""Prune repository archives according to specified rules"""
 		if not any((self.options.secondly, self.options.minutely, self.options.hourly, self.options.daily,
 					self.options.weekly, self.options.monthly, self.options.yearly, self.options.within)):
-			if not self.options.quiet:
-				sys.stderr.write("Not cleaning backups since we have not received any cleaning options.\n")
-				return
+			sys.stderr.write("Not cleaning backups since we have not received any cleaning options.\n")
+			return 0
 
 		archives = list(self.list_archives())
 
@@ -167,11 +184,18 @@ class Volume(object):
 			for snapshot in keep:
 				print("Keep: " + snapshot.name)
 
+		# One snapshot that refuses to go must not stop the rest from being reclaimed.
+		failed = 0
 		for snapshot in to_delete:
-			self.snapshot_delete(snapshot.path)
+			try:
+				self.snapshot_delete(snapshot.path)
+			except SnapshotError as e:
+				sys.stderr.write("%s\n" % e)
+				failed += 1
+		return failed
 
 	def _bcachefs_snapshot_create(self, snapshot):
-		return process_call([
+		return checked_call([
 			BCACHEFS, "subvolume", "snapshot", "-r",
 			self.path,
 			os.path.abspath(snapshot),
@@ -179,10 +203,19 @@ class Volume(object):
 
 	def snapshot_create(self, snapshot=None):
 		if snapshot is None:
-			snapshot = os.path.join(self.snapshot_dir, datetime.now().strftime(self.snapshot_name_format))
+			# Names are read back with strptime as UTC; generating them in local time would
+			# shift every retention decision by the offset.
+			stamp = datetime.now(timezone.utc).strftime(self.snapshot_name_format)
+			snapshot = os.path.join(self.snapshot_dir, stamp)
+
+		# Two runs inside one time-format tick want the same name. The archive is already
+		# there, so pruning should still proceed rather than the run dying on EEXIST.
+		if self.do_action and os.path.exists(snapshot):
+			sys.stderr.write("%s already exists, keeping it\n" % snapshot)
+			return
 
 		if self.options.snapshot_create_command:
-			process_call(
+			checked_call(
 				shlex.split(self.options.snapshot_create_command.format(source=self.path, destination=snapshot)),
 				self.do_action,
 			)
@@ -190,14 +223,14 @@ class Volume(object):
 			self._bcachefs_snapshot_create(snapshot)
 
 	def _bcachefs_snapshot_delete(self, snapshot):
-		return process_call([
+		return checked_call([
 			BCACHEFS, "subvolume", "delete",
 			os.path.abspath(snapshot)
 		], self.do_action)
 
 	def snapshot_delete(self, snapshot):
 		if self.options.snapshot_delete_command:
-			process_call(shlex.split(self.options.snapshot_delete_command.format(snapshot=snapshot)), self.do_action)
+			checked_call(shlex.split(self.options.snapshot_delete_command.format(snapshot=snapshot)), self.do_action)
 		else:
 			self._bcachefs_snapshot_delete(snapshot)
 
@@ -216,6 +249,11 @@ def parse_options():
 		"--keep-within", dest="within", type="int",
 		default=None, metavar="HOURS",
 		help="Keep all archives within this number of hours.",
+	)
+	parser.add_option(
+		"-d", "--days", dest="days", type="int",
+		default=None, metavar="DAYS",
+		help="Keep all archives within this number of days. Same setting as --keep-within.",
 	)
 	parser.add_option(
 		"--keep-last", dest="secondly", type="int",
@@ -282,7 +320,7 @@ def parse_options():
 	parser.add_option(
 		"-q", "--quiet", dest="quiet",
 		action="store_true", default=False,
-		help="Closes stdout and stderr.",
+		help="Discard stdout. Errors still go to stderr.",
 	)
 	parser.add_option(
 		"-s", "--snapshot-dir", dest="snapshot_dir",
@@ -309,6 +347,11 @@ def parse_options():
 	if len(args) != 1:
 		parser.error("The only non-option argument is the directory to snapshot.")
 
+	if options.days is not None:
+		if options.within is not None:
+			parser.error("-d/--days and --keep-within set the same thing, pass only one.")
+		options.within = options.days * 24
+
 	return options, args
 
 
@@ -317,22 +360,30 @@ def main():
 
 	if options.quiet:
 		sys.stdout.close()
-		sys.stdout = open("/dev/null", 'w')
-		sys.stderr.close()
-		sys.stderr = open("/dev/null", 'w')
+		sys.stdout = open(os.devnull, 'w')
 
 	volume = Volume(args[0], options)
-	volume.snapshot_create()
 
-	if options.do_action:
-		os.utime(volume.path, None)
+	# Pruning past this point would delete history without anything replacing it, so a failed
+	# snapshot ends the run. A source that is a plain directory rather than a subvolume fails
+	# here, every time, instead of quietly aging out every archive it already had.
+	try:
+		volume.snapshot_create()
 
-	if options.latest_snapshot:
-		volume.snapshot_update_latest()
+		if options.do_action:
+			os.utime(volume.path, None)
 
-	if options.free_space is None or (options.free_space and free_space_check(volume.snapshot_dir, options.free_space)):
-		volume.prune_backups()
+		if options.latest_snapshot:
+			volume.snapshot_update_latest()
+	except SnapshotError as e:
+		sys.stderr.write("%s: %s\nrefusing to prune\n" % (volume.path, e))
+		return 1
+
+	if not free_space_check(volume.snapshot_dir, options.free_space):
+		return 0
+
+	return 1 if volume.prune_backups() else 0
 
 
 if __name__ == "__main__":
-	main()
+	sys.exit(main())
